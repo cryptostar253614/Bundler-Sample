@@ -87,7 +87,6 @@ const main = async () => {
   const rpcUrl = process.env.RPC_URL || "";
   console.log("RPC_URL:", rpcUrl);
 
-  // get the latest blockhash
   const connection = new Connection(rpcUrl, "confirmed");
 
   // Build and sign a tip transaction
