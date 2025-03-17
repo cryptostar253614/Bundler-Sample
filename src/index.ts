@@ -76,23 +76,11 @@ async function getJitoTipAccount() {
   return jitoTipAddress;
 }
 
-
-
-
 const main = async () => {
   const blockEngineUrl = process.env.BLOCK_ENGINE_URL || "";
   console.log("BLOCK_ENGINE_URL:", blockEngineUrl);
 
- 
   const keypair = Keypair.fromSecretKey(bs58.decode(""));
-
-  const bundleTransactionLimit = parseInt(
-    process.env.BUNDLE_TRANSACTION_LIMIT || "5",
-  );
-
-  
-
-
   const jitoTipAddress = await getJitoTipAccount();
   console.log("jitoTipAddress:", jitoTipAddress.toBase58());
 
@@ -125,68 +113,61 @@ const main = async () => {
   ).blockhash;
   transaction_2.feePayer = keypair.publicKey;
   await transaction_2.sign(keypair);
-  
-  
 
-    const tipIx = SystemProgram.transfer({
-      fromPubkey: keypair.publicKey,
-      toPubkey: jitoTipAddress,
-      lamports: 1000000, // tip amount
-    });
+  const tipIx = SystemProgram.transfer({
+    fromPubkey: keypair.publicKey,
+    toPubkey: jitoTipAddress,
+    lamports: 1000000, // tip amount
+  });
 
-    const transaction_jitoTip = new Transaction().add(tipIx);
-    transaction_jitoTip.recentBlockhash = (
-      await connection.getLatestBlockhash()
-    ).blockhash;
-    transaction_jitoTip.feePayer = keypair.publicKey;
-    await transaction_jitoTip.sign(keypair);
+  const transaction_jitoTip = new Transaction().add(tipIx);
+  transaction_jitoTip.recentBlockhash = (
+    await connection.getLatestBlockhash()
+  ).blockhash;
+  transaction_jitoTip.feePayer = keypair.publicKey;
+  await transaction_jitoTip.sign(keypair);
 
-    const bunldeSentResult = await queryJitoBundles("sendBundle", [
-      bs58.encode(transaction_1.serialize()),
-      bs58.encode(transaction_2.serialize()),
-      bs58.encode(transaction_jitoTip.serialize())
-    ]);
+  const bunldeSentResult = await queryJitoBundles("sendBundle", [
+    bs58.encode(transaction_1.serialize()),
+    bs58.encode(transaction_2.serialize()),
+    bs58.encode(transaction_jitoTip.serialize()),
+  ]);
 
-    console.log(`✅ Bundle sent: ${bunldeSentResult?.result}`);
+  console.log(`✅ Bundle sent: ${bunldeSentResult?.result}`);
 
-    let retryCount = 0;
-    const timeBetweenRetries = 5000;
-    const maxRetries = 50;
+  let retryCount = 0;
+  const timeBetweenRetries = 5000;
+  const maxRetries = 50;
 
-    do {
-      const inflightBundleStatus = await queryInflightBundleStatuses(
-        "getInflightBundleStatuses",
-        [bunldeSentResult?.result]
-      );
+  do {
+    const inflightBundleStatus = await queryInflightBundleStatuses(
+      "getInflightBundleStatuses",
+      [bunldeSentResult?.result]
+    );
 
-      const bundleStatus = inflightBundleStatus?.result.value?.[0].status;
+    const bundleStatus = inflightBundleStatus?.result.value?.[0].status;
 
-      if (bundleStatus === "Failed") {
-        console.log("❌ JITO bundle failed");
-        return "Failed";
-      }
+    if (bundleStatus === "Failed") {
+      console.log("❌ JITO bundle failed");
+      return "Failed";
+    }
 
-      if (bundleStatus === "Landed") {
-        console.log("✅ JITO bundle landed");
-        const bundle = await queryBundleStatuses("getBundleStatuses", [
-          bunldeSentResult?.result,
-        ]);
-        console.log(
-          `📝 Transactions: ${bundle?.result.value?.[0].transactions}`
-        );
+    if (bundleStatus === "Landed") {
+      console.log("✅ JITO bundle landed");
+      const bundle = await queryBundleStatuses("getBundleStatuses", [
+        bunldeSentResult?.result,
+      ]);
+      console.log(`📝 Transactions: ${bundle?.result.value?.[0].transactions}`);
 
-        return bundle?.result.value?.[0].transactions;
-      }
+      return bundle?.result.value?.[0].transactions;
+    }
 
-      console.log(`🔄 JITO bundle status: ${bundleStatus}`);
-      retryCount++;
-      await new Promise((resolve) => setTimeout(resolve, timeBetweenRetries));
-    } while (retryCount < maxRetries);
-  
+    console.log(`🔄 JITO bundle status: ${bundleStatus}`);
+    retryCount++;
+    await new Promise((resolve) => setTimeout(resolve, timeBetweenRetries));
+  } while (retryCount < maxRetries);
 };
 
-main()
-  
-  .catch((e) => {
-    throw e;
-  });
+main().catch((e) => {
+  throw e;
+});
