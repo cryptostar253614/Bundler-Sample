@@ -94,7 +94,7 @@ const main = async () => {
   const transfer1Ix = SystemProgram.transfer({
     fromPubkey: keypair.publicKey,
     toPubkey: new PublicKey("CMfPj4buBfD4XEuDa6NHHL3FHbXTaUWwe7K52YmcjaLn"),
-    lamports: 1000000, // tip amount
+    lamports: 1000000,
   });
   const transaction_1 = new Transaction().add(transfer1Ix);
   transaction_1.recentBlockhash = (
