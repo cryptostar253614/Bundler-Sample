@@ -5,70 +5,76 @@ import {
   Connection,
   Keypair,
   PublicKey,
+  Transaction,
   TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
 import bs58 from "bs58";
-
-import { searcher, bundle } from "jito-ts";
 import { SystemProgram } from "@solana/web3.js";
+import axios from "axios";
 
-const getRandomeTipAccountAddress = async (
-  searcherClient: searcher.SearcherClient,
-) => {
-  const account = await searcherClient.getTipAccounts();
-  if (account.ok) {
-    const addresses = account.value; // Extract the array from the Result
-    return new PublicKey(addresses[Math.floor(Math.random() * addresses.length)]);
-  } else {
-    throw new Error(`Failed to fetch tip accounts: ${account.error.message}`);
+const jitoUrl = process.env.BLOCK_ENGINE_URL || "";
+
+async function queryJitoBundles(method: string, params: any[]) {
+  try {
+    const response = await axios.post(`${jitoUrl}/bundles`, {
+      jsonrpc: "2.0",
+      id: 1,
+      method,
+      params: [params],
+    });
+
+    return response.data;
+  } catch (error: any) {
+    const errorData = JSON.stringify(error.response.data);
+    console.error(`Error querying Jito engine: ${errorData}`);
+    return null;
   }
-  
-};
+}
 
-export const onBundleResult = (c: searcher.SearcherClient): Promise<number> => {
-  let first = 0;
-  let isResolved = false;
+async function queryInflightBundleStatuses(method: string, params: any[]) {
+  try {
+    const response = await axios.post(`${jitoUrl}/getInflightBundleStatuses`, {
+      jsonrpc: "2.0",
+      id: 1,
+      method,
+      params: [params],
+    });
 
-  return new Promise((resolve) => {
-    // Set a timeout to reject the promise if no bundle is accepted within 5 seconds
-    setTimeout(() => {
-      console.log("222")
-      resolve(first);
-      isResolved = true;
-    }, 30000);
-
-    console.log("Setting up onBundleResult listener...");
-
-c.onBundleResult(
-  (result: any) => {
-    console.log("111"); // Debugging log
-    if (isResolved) return;
-    console.log("Received result:", result);
-
-    const isAccepted = result.accepted;
-    const isRejected = result.rejected;
-
-    if (!isResolved) {
-      if (isAccepted) {
-        first += 1;
-        isResolved = true;
-        console.log("Final result (Accepted):", result);
-        resolve(first);
-      }
-      if (isRejected) {
-        console.log("Bundle was rejected");
-      }
-    }
-  },
-  (e: any) => {
-    console.error("Error in onBundleResult:", e);
+    return response.data;
+  } catch (error: any) {
+    const errorData = JSON.stringify(error.response.data);
+    console.error(`Error querying Jito engine: ${errorData}`);
+    return null;
   }
-);
+}
 
-  });
-};
+async function queryBundleStatuses(method: string, params: any[]) {
+  try {
+    const response = await axios.post(`${jitoUrl}/getBundleStatuses`, {
+      jsonrpc: "2.0",
+      id: 1,
+      method,
+      params: [params],
+    });
+
+    return response.data;
+  } catch (error: any) {
+    const errorData = JSON.stringify(error.response.data);
+    console.error(`Error querying Jito engine: ${errorData}`);
+    return null;
+  }
+}
+
+async function getJitoTipAccount() {
+  const accounts = await queryJitoBundles("getTipAccounts", []);
+  const jitoTipAddress = new PublicKey(
+    accounts?.result[Math.floor(Math.random() * accounts?.result.length)]
+  );
+
+  return jitoTipAddress;
+}
 
 
 
@@ -86,21 +92,9 @@ const main = async () => {
 
   
 
-  // Create the searcher client that will interact with Jito
-  const searcherClient = searcher.searcherClient(blockEngineUrl);
 
-  searcherClient.onBundleResult(
-    (result) => {
-      console.log("received bundle result:", result);
-    },
-    (e) => {
-      throw e;
-    },
-  );
-  
-  // Get a random tip account address
-  const tipAccount = await getRandomeTipAccountAddress(searcherClient);
-  console.log("tip account:", tipAccount.toBase58());
+  const jitoTipAddress = await getJitoTipAccount();
+  console.log("jitoTipAddress:", jitoTipAddress.toBase58());
 
   const rpcUrl = process.env.RPC_URL || "";
   console.log("RPC_URL:", rpcUrl);
@@ -114,67 +108,80 @@ const main = async () => {
     toPubkey: new PublicKey("CMfPj4buBfD4XEuDa6NHHL3FHbXTaUWwe7K52YmcjaLn"),
     lamports: 1000000, // tip amount
   });
+  const transaction_1 = new Transaction().add(transfer1Ix);
+  transaction_1.recentBlockhash = (
+    await connection.getLatestBlockhash()
+  ).blockhash;
+  transaction_1.feePayer = keypair.publicKey;
+  await transaction_1.sign(keypair);
   const transfer2Ix = SystemProgram.transfer({
     fromPubkey: keypair.publicKey,
     toPubkey: new PublicKey("DfHhcLw2yX9i3bTtA7CU9XTE2fsNTH4VSi1GeRMdcyEK"),
     lamports: 1000000, // tip amount
   });
-  const tipIx = SystemProgram.transfer({
-    fromPubkey: keypair.publicKey,
-    toPubkey: tipAccount,
-    lamports: 1000000, // tip amount
-  });
-  const transfer1Tx = new VersionedTransaction(
-    new TransactionMessage({
-      payerKey: keypair.publicKey,
-      recentBlockhash: (
-        await connection.getLatestBlockhash()
-      ).blockhash,
-      instructions: [transfer1Ix],
-    }).compileToV0Message(),
-  );
-  transfer1Tx.sign([keypair]);
-  const transfer2Tx = new VersionedTransaction(
-    new TransactionMessage({
-      payerKey: keypair.publicKey,
-      recentBlockhash: (
-        await connection.getLatestBlockhash()
-      ).blockhash,
-      instructions: [transfer2Ix],
-    }).compileToV0Message(),
-  );
-  transfer2Tx.sign([keypair]);
-  const tipTx = new VersionedTransaction(
-    new TransactionMessage({
-      payerKey: keypair.publicKey,
-      recentBlockhash: (
-        await connection.getLatestBlockhash()
-      ).blockhash,
-      instructions: [tipIx],
-    }).compileToV0Message(),
-  );
-  tipTx.sign([keypair]);
+  const transaction_2 = new Transaction().add(transfer2Ix);
+  transaction_2.recentBlockhash = (
+    await connection.getLatestBlockhash()
+  ).blockhash;
+  transaction_2.feePayer = keypair.publicKey;
+  await transaction_2.sign(keypair);
+  
+  
 
-  const transactions = [
-    transfer1Tx,
-    transfer2Tx,
-    tipTx,
-  ];
+    const tipIx = SystemProgram.transfer({
+      fromPubkey: keypair.publicKey,
+      toPubkey: jitoTipAddress,
+      lamports: 1000000, // tip amount
+    });
 
+    const transaction_jitoTip = new Transaction().add(tipIx);
+    transaction_jitoTip.recentBlockhash = (
+      await connection.getLatestBlockhash()
+    ).blockhash;
+    transaction_jitoTip.feePayer = keypair.publicKey;
+    await transaction_jitoTip.sign(keypair);
 
-  const jitoBundle = new bundle.Bundle(
-    transactions,
-    bundleTransactionLimit,
-  );
+    const bunldeSentResult = await queryJitoBundles("sendBundle", [
+      bs58.encode(transaction_1.serialize()),
+      bs58.encode(transaction_2.serialize()),
+      bs58.encode(transaction_jitoTip.serialize())
+    ]);
 
-  try {
-    const resp = await searcherClient.sendBundle(jitoBundle);
-    console.log("resp:", resp);
-    // const bundleResult = await onBundleResult(searcherClient);
-    // console.log("bundleResult:", bundleResult);
-  } catch (e) {
-    console.error("error sending bundle:", e);
-  }
+    console.log(`✅ Bundle sent: ${bunldeSentResult?.result}`);
+
+    let retryCount = 0;
+    const timeBetweenRetries = 5000;
+    const maxRetries = 50;
+
+    do {
+      const inflightBundleStatus = await queryInflightBundleStatuses(
+        "getInflightBundleStatuses",
+        [bunldeSentResult?.result]
+      );
+
+      const bundleStatus = inflightBundleStatus?.result.value?.[0].status;
+
+      if (bundleStatus === "Failed") {
+        console.log("❌ JITO bundle failed");
+        return "Failed";
+      }
+
+      if (bundleStatus === "Landed") {
+        console.log("✅ JITO bundle landed");
+        const bundle = await queryBundleStatuses("getBundleStatuses", [
+          bunldeSentResult?.result,
+        ]);
+        console.log(
+          `📝 Transactions: ${bundle?.result.value?.[0].transactions}`
+        );
+
+        return bundle?.result.value?.[0].transactions;
+      }
+
+      console.log(`🔄 JITO bundle status: ${bundleStatus}`);
+      retryCount++;
+      await new Promise((resolve) => setTimeout(resolve, timeBetweenRetries));
+    } while (retryCount < maxRetries);
   
 };
 

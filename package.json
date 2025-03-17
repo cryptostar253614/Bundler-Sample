@@ -19,6 +19,7 @@
   "dependencies": {
     "@project-serum/serum": "^0.13.65",
     "@solana/web3.js": "^1.98.0",
+    "axios": "^1.8.3",
     "jito-ts": "^4.2.0"
   }
 }
